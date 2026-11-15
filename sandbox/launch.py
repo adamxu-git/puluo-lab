@@ -1,6 +1,7 @@
 """Launch Tart and capture its guest serial output without forwarding input."""
 
 import errno
+import fcntl
 import ipaddress
 import os
 from pathlib import Path
@@ -10,6 +11,33 @@ import socket
 import subprocess
 import sys
 import tty
+
+
+SERIAL_LOG_LIMIT = 32 * 1024 * 1024
+
+
+def capture_serial(events, vm, network, serial, output, log_path):
+    size = output.tell()
+    try:
+        while vm.poll() is None:
+            for key, _ in events.select(timeout=0.25):
+                if key.fileobj is network:
+                    network.recv(65536)
+                    continue
+                try:
+                    data = serial.read(65536)
+                except OSError as error:
+                    if error.errno != errno.EIO:
+                        raise
+                    continue
+                if size + len(data) > SERIAL_LOG_LIMIT:
+                    output.close()
+                    log_path.replace(log_path.with_name(log_path.name + '.1'))
+                    output = log_path.open('ab', buffering=0)
+                    size = 0
+                size += output.write(data)
+    finally:
+        output.close()
 
 
 def network_rules(mode):
@@ -45,22 +73,16 @@ def run(cli, name, log, mode, seed=None):
         if seed:
             args.extend(['--disk', f'{Path(seed).resolve(strict=True)}:ro'])
         args.append(name)
-        with open(log, 'ab', buffering=0) as output, selectors.DefaultSelector() as events:
+        log_path = Path(log)
+        lock_path = log_path.with_name(log_path.name + '.lock')
+        with lock_path.open('ab') as lock, selectors.DefaultSelector() as events:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             with subprocess.Popen(args, pass_fds=(guest.fileno(),)) as vm:
                 guest.close()
                 events.register(network, selectors.EVENT_READ)
                 events.register(master, selectors.EVENT_READ)
                 try:
-                    while vm.poll() is None:
-                        for key, _ in events.select(timeout=0.25):
-                            if key.fileobj is network:
-                                network.recv(65536)
-                                continue
-                            try:
-                                output.write(serial.read(65536))
-                            except OSError as error:
-                                if error.errno != errno.EIO:
-                                    raise
+                    capture_serial(events, vm, network, serial, log_path.open('ab', buffering=0), log_path)
                 finally:
                     if vm.poll() is None:
                         vm.terminate()
