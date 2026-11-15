@@ -1,0 +1,15 @@
+[Unit]
+Description=Puluo experiment background task control
+
+[Socket]
+ListenStream=/run/puluo-background.sock
+SocketUser=root
+SocketGroup=experiment
+SocketMode=0660
+Accept=yes
+MaxConnections=4
+TriggerLimitIntervalSec=60s
+TriggerLimitBurst=60
+
+[Install]
+WantedBy=sockets.target

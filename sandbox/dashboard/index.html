@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>实验运行记录 · Puluo Lab</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <main class="frame">
+    <header class="masthead">
+      <span class="brand"><span aria-hidden="true"></span>puluo lab</span>
+      <div class="masthead-right">
+        <span class="instance" id="instance">读取实例…</span>
+        <button id="refresh" class="refresh" type="button">刷新 <span aria-hidden="true">↻</span></button>
+      </div>
+    </header>
+    <section class="hero" aria-labelledby="page-title">
+      <div>
+        <h1 id="page-title">实验运行记录<span>.</span></h1>
+        <p id="overview">正在读取宿主记录</p>
+      </div>
+      <p class="local-clock"><span>北京时间</span><strong id="clock">—</strong></p>
+    </section>
+    <p class="notice" id="notice" role="status" hidden></p>
+    <section class="metrics" aria-label="运行概况">
+      <div><span class="label">虚拟机</span><strong id="vm">—</strong><small id="vm-note">Tart</small></div>
+      <div><span class="label">定时唤醒</span><strong id="timer">—</strong><small id="timer-note">systemd</small></div>
+      <div><span class="label">最近一轮</span><strong id="last">—</strong><small id="last-note">正式实验</small></div>
+      <div><span class="label">宿主磁盘占用</span><strong id="disk">—</strong><small id="disk-note">虚拟磁盘</small></div>
+    </section>
+    <div class="layout">
+      <section aria-labelledby="runs-title" class="history">
+        <div class="section-head">
+          <h2 id="runs-title">运行历史</h2>
+          <div class="switch" aria-label="记录类型">
+            <button data-mode="experiment" type="button" aria-pressed="true">正式实验 <span id="experiment-count"></span></button>
+            <button data-mode="test" type="button" aria-pressed="false">验收记录 <span id="test-count"></span></button>
+          </div>
+        </div>
+        <div id="runs"><p class="empty">正在读取运行历史…</p></div>
+      </section>
+      <aside aria-label="调度和审计">
+        <section class="schedule" aria-labelledby="schedule-title">
+          <div class="aside-head"><h2 id="schedule-title">夜间调度</h2><span>UTC+08</span></div>
+          <p id="schedule-note">读取调度状态…</p>
+          <ol class="slots" id="slots"></ol>
+        </section>
+        <section class="audit" aria-labelledby="audit-title">
+          <div class="aside-head"><h2 id="audit-title">审计来源</h2><span class="mark">只读</span></div>
+          <dl>
+            <div><dt>宿主串口日志</dt><dd id="log-size">—</dd></div>
+            <div><dt>上一份轮转文件</dt><dd id="rotated">—</dd></div>
+            <div><dt>最近读取</dt><dd id="checked">—</dd></div>
+          </dl>
+        </section>
+      </aside>
+    </div>
+  </main>
+</body>
+</html>

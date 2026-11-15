@@ -1,0 +1,33 @@
+[Unit]
+Description=Puluo experiment background task
+
+[Service]
+Type=exec
+User=experiment
+Group=experiment
+WorkingDirectory=/home/experiment/workspace
+Environment=PATH=/opt/puluo/node/bin:/usr/bin:/bin
+Environment=PYTHONUNBUFFERED=1
+ExecStartPre=/usr/bin/test -f /home/experiment/workspace/.puluo-background.py
+ExecStart=/usr/bin/python3 -E -s /home/experiment/workspace/.puluo-background.py
+RuntimeMaxSec=2h
+TimeoutStopSec=5s
+KillMode=control-group
+CPUQuota=25%
+MemoryMax=256M
+TasksMax=32
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/experiment/workspace
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+IPAddressDeny=any
+IPAddressAllow=127.0.0.1/32
+UMask=0077
+LogRateLimitIntervalSec=30s
+LogRateLimitBurst=25

@@ -1,6 +1,6 @@
 [Unit]
 Description=Run one experiment turn in the existing DSH session
-After=network-online.target
+After=network-online.target puluo-browser-proxy.service
 Wants=network-online.target
 ConditionPathExists=/etc/puluo/deepseek-key
 ConditionPathExists=/etc/puluo/wake.txt
@@ -9,5 +9,6 @@ ConditionPathExists=/etc/puluo/system-prompt.yml
 [Service]
 Type=oneshot
 ExecStart=/opt/puluo/guest-run.py experiment
-TimeoutStartSec=10min
+TimeoutStartSec=30min
+TimeoutStartFailureMode=kill
 UMask=0077

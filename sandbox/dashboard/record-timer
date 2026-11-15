@@ -1,0 +1,17 @@
+#!/bin/bash
+# Refresh a timestamped snapshot through the existing management connection.
+set -euo pipefail
+umask 077
+root=$(cd -- "$(dirname -- "$0")/.." && pwd)
+source "$root/instance-env"
+state_value=$("$root/guest-admin" 'systemctl is-enabled puluo-wake.timer || true')
+case "$state_value" in
+  enabled|disabled) ;;
+  *) printf 'Unable to verify the timer.\n' >&2; exit 1 ;;
+esac
+mkdir -p "$logs"
+temp=$(mktemp "$logs/.dashboard-timer.XXXXXX")
+trap 'rm -f "$temp"' EXIT
+printf '{"state":"%s","checked":"%s"}\n' "$state_value" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$temp"
+mv -f -- "$temp" "$logs/dashboard-timer.json"
+printf 'Timer status recorded: %s\n' "$state_value"

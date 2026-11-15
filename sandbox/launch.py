@@ -53,7 +53,21 @@ def network_rules(mode):
             if not address.is_global or address.is_multicast:
                 raise ValueError(f'Allowlist contains a non-public address: {address}')
             rules.append(f'out proto tcp {address}/32 port 443')
-    args = ['--net-softnet-block', 'in,out,out @host']
+    blocks = ['in', 'out', 'out @host']
+    if mode == 'isolated' and (state / 'public-browser').exists():
+        restricted = Path(__file__).resolve().parent / 'browser-network' / 'restricted-ipv4.txt'
+        blocks.extend(f'out {subnet}' for subnet in restricted.read_text().splitlines())
+        host_interfaces = subprocess.check_output(['/sbin/ifconfig', '-a'], text=True)
+        for line in host_interfaces.splitlines():
+            columns = line.split()
+            if columns and columns[0] == 'inet':
+                address = ipaddress.IPv4Address(columns[1])
+                if address.is_global and not address.is_multicast:
+                    blocks.append(f'out {address}/32')
+        rules.extend(f'out proto tcp 0.0.0.0/0 port {port}' for port in (80, 443))
+        rules.extend(f'out proto {protocol} {resolver}/32 port 53'
+                     for resolver in ('1.1.1.1', '223.5.5.5') for protocol in ('udp', 'tcp'))
+    args = ['--net-softnet-block', ','.join(blocks)]
     if rules:
         args.extend(['--net-softnet-allow', ','.join(rules)])
     return args

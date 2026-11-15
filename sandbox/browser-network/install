@@ -1,0 +1,22 @@
+#!/bin/bash
+set -euo pipefail
+umask 077
+root=$(cd -- "$(dirname -- "$0")/.." && pwd)
+source "$root/instance-env"
+source_dir="$root/browser-network"
+scratch=$(mktemp -d)
+trap 'rm -rf "$scratch"' EXIT
+/usr/bin/python3 "$source_dir/render-rules.py" "$state" "$scratch"
+"$root/guest-admin" 'set -e; if ! command -v squid >/dev/null || ! command -v nft >/dev/null; then sudo env DEBIAN_FRONTEND=noninteractive apt-get install -qy --no-install-recommends squid nftables; fi; systemctl is-active --quiet systemd-networkd; sudo systemctl disable --now squid.service'
+for file in browser-deny-ipv4.txt browser-egress.nft; do
+  "$root/guest-admin" "sudo install -o root -g root -m 644 /dev/stdin /etc/puluo/$file" < "$scratch/$file"
+done
+"$root/guest-admin" 'sudo install -o root -g root -m 644 /dev/stdin /etc/puluo/browser-proxy.conf' < "$source_dir/proxy.conf"
+for unit in puluo-browser-egress.service puluo-browser-proxy.service; do
+  "$root/guest-admin" "sudo install -o root -g root -m 644 /dev/stdin /etc/systemd/system/$unit" < "$source_dir/$unit"
+done
+"$root/guest-admin" 'set -e; sudo nft -c -f /etc/puluo/browser-egress.nft; sudo -u proxy /usr/sbin/squid -k parse -f /etc/puluo/browser-proxy.conf; sudo systemd-analyze verify /etc/systemd/system/puluo-browser-egress.service /etc/systemd/system/puluo-browser-proxy.service; sudo install -d -o root -g root -m 755 /etc/systemd/system/systemd-networkd.service.d'
+"$root/guest-admin" 'sudo install -o root -g root -m 644 /dev/stdin /etc/systemd/system/systemd-networkd.service.d/50-puluo-browser-guard.conf' < "$source_dir/network-guard.conf"
+"$root/guest-admin" 'sudo install -o root -g root -m 644 /dev/stdin /etc/puluo/guest.cordis.yml' < "$root/guest.cordis.yml"
+"$root/guest-admin" 'set -e; sudo systemctl daemon-reload; sudo systemctl enable puluo-browser-egress.service puluo-browser-proxy.service; sudo systemctl reload-or-restart puluo-browser-egress.service; sudo systemctl restart puluo-browser-proxy.service'
+touch "$state/public-browser"

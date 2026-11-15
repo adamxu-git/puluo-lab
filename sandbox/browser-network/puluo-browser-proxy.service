@@ -1,0 +1,23 @@
+[Unit]
+Description=Puluo public browser proxy
+Requires=puluo-browser-egress.service
+After=puluo-browser-egress.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=proxy
+Group=proxy
+ExecStart=/usr/sbin/squid -N -f /etc/puluo/browser-proxy.conf
+ExecStartPost=/bin/sh -c 'for attempt in 1 2 3 4 5 6 7 8 9 10; do if /usr/bin/ss -H -ltn "sport = :3128" | /usr/bin/grep -Fq "127.0.0.2:3128"; then exit 0; fi; sleep 1; done; exit 1'
+TimeoutStartSec=20s
+TimeoutStopSec=5s
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+MemoryMax=256M
+TasksMax=48
+
+[Install]
+WantedBy=multi-user.target

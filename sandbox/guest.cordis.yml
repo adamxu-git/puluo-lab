@@ -7,7 +7,18 @@
         serverName: browser
         transport: stdio
         command: /opt/puluo/browser-tools/node_modules/.bin/playwright-mcp
-        args: [--headless, --browser, chromium, --isolated]
+        args: !!js >-
+          ['--headless', '--browser', 'chromium', '--isolated'].concat(
+            process.getBuiltinModule('node:fs').existsSync('/etc/puluo/browser-proxy.conf')
+              ? ['--proxy-server', 'http://127.0.0.2:3128', '--proxy-bypass', 'localhost,127.0.0.1,[::1]']
+              : [])
         cwd: !!js process.cwd()
         env:
           PLAYWRIGHT_BROWSERS_PATH: /opt/puluo/browser
+    - id: puluo-background
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: background
+        transport: stdio
+        command: /opt/puluo/background-mcp.py
+        cwd: !!js process.cwd()

@@ -1,5 +1,9 @@
 # Sourced by host commands. The original acceptance VM predates named instances.
-name=${PULUO_VM_NAME:-puluo-ubuntu}
+name=${PULUO_VM_NAME:-}
+if [[ -z "$name" && -r "$root/state/active-instance" ]]; then
+  IFS= read -r name < "$root/state/active-instance"
+fi
+name=${name:-puluo-ubuntu}
 if [[ ! "$name" =~ ^[a-z][a-z0-9-]{0,39}$ || "$name" == puluo-golden ]]; then
   printf 'Invalid experiment VM name.\n' >&2
   exit 2

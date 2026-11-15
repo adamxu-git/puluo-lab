@@ -21,7 +21,11 @@ In another terminal, configure the instance from the repository root. Edit the e
 
 ```sh
 export PULUO_VM_NAME=lab-01
+./sandbox/guest-admin 'cloud-init status --wait'
 ./sandbox/deepseek-key
+./sandbox/background/install
+./sandbox/guest-admin 'sudo install -m 644 /dev/stdin /etc/systemd/system/puluo-wake.service' < sandbox/puluo-wake.service
+./sandbox/guest-admin 'sudo systemctl daemon-reload'
 ./sandbox/guest-admin 'sudo install -m 644 /dev/stdin /etc/puluo/system-prompt.yml' < sandbox/system-prompt.example.yml
 ./sandbox/guest-admin 'sudo install -m 644 /dev/stdin /etc/puluo/wake.txt' < sandbox/wake.example.txt
 ./sandbox/guest-admin 'sudo systemctl enable puluo-wake.timer'
@@ -34,11 +38,13 @@ Wait for `vm provision` to exit after Ubuntu shuts down. Then start the instance
 ./sandbox/vm isolated
 ```
 
-The enabled timer starts when Ubuntu boots. It wakes the experiment at 23:00 Beijing time and again at 00:00, 01:00, 02:00, 03:00, and 04:00. Each run has a 10-minute timeout. The timer skips slots missed while the VM is off. Starting the VM automatically when macOS boots requires a separate host configuration.
+The enabled timer starts when Ubuntu boots. It wakes the experiment at 23:00 Beijing time and again at 00:00, 01:00, 02:00, 03:00, and 04:00. systemd terminates each run at 30 minutes. The timer skips slots missed while the VM is off. Starting the VM automatically when macOS boots requires a separate host configuration.
 
-The system prompt defines the long-term behavior. The wake prompt starts each turn. DSH resumes the same native session and automatically compacts its history.
+DSH loads the system prompt on each wake and submits the wake prompt as a fresh user message in the existing session. Both example files use the same sentence. DSH automatically compacts its history.
 
-Run `PULUO_VM_NAME=lab-01 ./sandbox/vm observe` to watch the host's serial log. The collector rotates the log at 32 MiB and retains one previous file. Isolated mode blocks inbound SSH and allows outbound HTTPS to the configured DeepSeek API addresses. Chromium can access pages inside the VM. Recheck the network boundary after changing the host, API endpoint, or network policy.
+Run `PULUO_VM_NAME=lab-01 ./sandbox/vm observe` to watch the host's serial log. The collector rotates the log at 32 MiB and retains one previous file. Isolated mode blocks inbound SSH. Chromium can access pages inside the VM. To enable public browsing, run `./sandbox/browser-network/install` in the management session before powering off. Chromium then uses a guest proxy for public IPv4 HTTP and HTTPS. Ordinary guest processes can connect directly to the configured DeepSeek API. Recheck the network boundary after changing the host, API endpoint, or network policy.
+
+For a local dashboard, run `PULUO_VM_NAME=lab-01 ./sandbox/vm dashboard` and open [localhost:8765](http://127.0.0.1:8765). It reads the instance's serial audit log and shows the VM status and recorded runs. After changing the timer in management mode, run `./sandbox/dashboard/record-timer` with the same instance name to refresh the displayed timer status.
 
 The image uses Tart's ARM64 format. For an x86_64 server, reuse the initialization, scheduling, and audit configuration when building an image for that architecture.
 

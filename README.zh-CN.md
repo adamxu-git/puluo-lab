@@ -21,7 +21,11 @@ export PULUO_VM_NAME=lab-01
 
 ```sh
 export PULUO_VM_NAME=lab-01
+./sandbox/guest-admin 'cloud-init status --wait'
 ./sandbox/deepseek-key
+./sandbox/background/install
+./sandbox/guest-admin 'sudo install -m 644 /dev/stdin /etc/systemd/system/puluo-wake.service' < sandbox/puluo-wake.service
+./sandbox/guest-admin 'sudo systemctl daemon-reload'
 ./sandbox/guest-admin 'sudo install -m 644 /dev/stdin /etc/puluo/system-prompt.yml' < sandbox/system-prompt.example.yml
 ./sandbox/guest-admin 'sudo install -m 644 /dev/stdin /etc/puluo/wake.txt' < sandbox/wake.example.txt
 ./sandbox/guest-admin 'sudo systemctl enable puluo-wake.timer'
@@ -34,9 +38,11 @@ export PULUO_VM_NAME=lab-01
 ./sandbox/vm isolated
 ```
 
-可先编辑两个提示词示例。系统提示词设定长期行为，每次唤醒的消息只负责触发一轮。模型通过同一个 DSH 原生 Session ID 续接，DSH 负责自动压缩。定时器按北京时间在 23:00 及次日 00:00、01:00、02:00、03:00、04:00 各触发一次。每轮最多 10 分钟，关机漏掉的时间点不补跑。启用定时器后，它会在 Ubuntu 启动时加载。macOS 开机启动 VM 需要另外配置。
+每次唤醒都会加载系统提示词，并在同一个 DSH 会话里新发一条唤醒消息。两个示例文件使用同一句话。DSH 负责自动压缩历史。定时器按北京时间在 23:00 及次日 00:00、01:00、02:00、03:00、04:00 各触发一次。每轮到了 30 分钟由 systemd 终止，关机漏掉的时间点不补跑。启用定时器后，它会在 Ubuntu 启动时加载。macOS 开机启动 VM 需要另外配置。
 
-运行 `PULUO_VM_NAME=lab-01 ./sandbox/vm observe` 查看 Mac 上的串口审计日志。采集到 32 MiB 时轮转，保留上一份文件。实验模式关闭管理 SSH，仅允许连接 Softnet 白名单中的 DeepSeek 官方 API。更换主机、模型端点或网络策略后，应重新验证隔离。浏览器默认可访问 VM 内部网页，任意公网浏览需要另行配置出站规则。
+运行 `PULUO_VM_NAME=lab-01 ./sandbox/vm observe` 查看 Mac 上的串口审计日志。采集到 32 MiB 时轮转，保留上一份文件。实验模式关闭管理 SSH。浏览器可访问 VM 内部网页。若要开放公网浏览，在管理模式下关机前运行 `./sandbox/browser-network/install`。Chromium 会通过 VM 内的代理访问公网 IPv4 的 HTTP 和 HTTPS 页面，普通进程直连公网仍限于 DeepSeek API。更换主机、模型端点或网络策略后，应重新验证隔离。
+
+运行 `PULUO_VM_NAME=lab-01 ./sandbox/vm dashboard`，在浏览器打开本地看板。它从 Mac 读取该实例的串口日志，显示 VM 状态和已记录的运行。管理模式下修改定时器之后，用同一个实例名运行 `./sandbox/dashboard/record-timer` 刷新定时器状态。[打开本地看板](http://127.0.0.1:8765)
 
 本镜像使用 Tart 的 ARM64 虚拟机格式。换用 x86_64 服务器时，可复用云镜像初始化、DSH 调度和审计设计，并为新架构重新构建。
 

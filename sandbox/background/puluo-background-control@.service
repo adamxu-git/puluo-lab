@@ -1,0 +1,10 @@
+[Unit]
+Description=Puluo experiment background task request
+
+[Service]
+Type=exec
+ExecStart=/opt/puluo/background-control.py
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+RuntimeMaxSec=15s

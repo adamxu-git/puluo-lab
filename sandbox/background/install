@@ -1,0 +1,11 @@
+#!/bin/bash
+set -euo pipefail
+root=$(cd -- "$(dirname -- "$0")/.." && pwd)
+for file in background-control.py background-mcp.py; do
+  "$root/guest-admin" "sudo install -o root -g root -m 755 /dev/stdin /opt/puluo/$file" < "$root/background/$file"
+done
+for unit in puluo-background.service puluo-background-control.socket puluo-background-control@.service; do
+  "$root/guest-admin" "sudo install -o root -g root -m 644 /dev/stdin /etc/systemd/system/$unit" < "$root/background/$unit"
+done
+"$root/guest-admin" 'set -e; sudo systemd-analyze verify /etc/systemd/system/puluo-background.service /etc/systemd/system/puluo-background-control.socket /etc/systemd/system/puluo-background-control@.service; sudo systemctl daemon-reload; sudo systemctl enable --now puluo-background-control.socket'
+"$root/guest-admin" 'sudo install -o root -g root -m 644 /dev/stdin /etc/puluo/guest.cordis.yml' < "$root/guest.cordis.yml"

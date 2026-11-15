@@ -18,15 +18,19 @@ if [[ -e "$TART_HOME/vms/$name" ]]; then
   exit 1
 fi
 mkdir -p -- "$state/seed" "$logs"
-/usr/bin/dscacheutil -q host -a name api.deepseek.com |
-  /usr/bin/awk '/^ip_address: / {print $2}' |
-  /usr/bin/python3 -c 'import sys,ipaddress
+resolve_ipv4() {
+  /usr/bin/dscacheutil -q host -a name "$1" |
+    /usr/bin/awk '/^ip_address: / {print $2}' |
+    /usr/bin/python3 -c 'import sys,ipaddress
 addresses = sorted({ipaddress.IPv4Address(line.strip()) for line in sys.stdin})
 if not addresses or any(not ip.is_global or ip.is_multicast for ip in addresses):
-    sys.exit("No validated public DeepSeek IPv4 address")
+    sys.exit(f"No validated public IPv4 address for {sys.argv[1]}")
 for address in addresses:
-    print(address)' > "$state/isolated-ipv4.txt"
-cp -- "$state/isolated-ipv4.txt" "$state/provision-ipv4.txt"
+    print(address)' "$1"
+}
+resolve_ipv4 api.deepseek.com > "$state/isolated-ipv4.txt"
+ubuntu_mirror_ips=$(resolve_ipv4 ports.ubuntu.com)
+{ cat "$state/isolated-ipv4.txt"; printf '%s\n' "$ubuntu_mirror_ips"; } | sort -u > "$state/provision-ipv4.txt"
 ssh-keygen -q -t ed25519 -N '' -C "puluo-$name" -f "$state/setup-key"
 printf 'instance-id: %s\nlocal-hostname: %s\n' "$(/usr/bin/uuidgen)" "$name" > "$state/seed/meta-data"
 {
@@ -53,7 +57,18 @@ EOF
   while IFS= read -r address; do
     printf "      printf '%%s\\\\n' '%s api.deepseek.com # puluo-api' >> /etc/hosts\n" "$address"
   done < "$state/isolated-ipv4.txt"
-  printf '    fi\n'
+  cat <<'EOF'
+    fi
+    if ! grep -q ' # puluo-ubuntu-mirror$' /etc/hosts; then
+EOF
+  while IFS= read -r address; do
+    printf "      printf '%%s\\n' '%s ports.ubuntu.com # puluo-ubuntu-mirror' >> /etc/hosts\n" "$address"
+  done <<< "$ubuntu_mirror_ips"
+  cat <<'EOF'
+    fi
+runcmd:
+  - [sed, -i, 's|http://ports.ubuntu.com|https://ports.ubuntu.com|g', /etc/apt/sources.list.d/ubuntu.sources]
+EOF
 } > "$state/seed/user-data"
 /usr/bin/hdiutil makehybrid -quiet -iso -joliet -default-volume-name cidata \
   -o "$state/seed.iso" "$state/seed"
