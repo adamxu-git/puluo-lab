@@ -23,7 +23,12 @@ export PULUO_VM_NAME=lab-01
 ./sandbox/guest-admin 'sudo install -m 644 /dev/stdin /etc/puluo/system-prompt.yml' < sandbox/system-prompt.example.yml
 ./sandbox/guest-admin 'sudo install -m 644 /dev/stdin /etc/puluo/wake.txt' < sandbox/wake.example.txt
 ./sandbox/guest-admin 'sudo systemctl enable puluo-wake.timer'
-./sandbox/vm stop
+./sandbox/guest-admin 'sudo systemctl poweroff'
+```
+
+等第一个终端里的 `vm provision` 退出，确认 VM 已关机，再启动隔离模式。
+
+```sh
 ./sandbox/vm isolated
 ```
 
