@@ -1,0 +1,24 @@
+#!/bin/bash
+set -euo pipefail
+
+root=$(cd -- "$(dirname -- "$0")" && pwd)
+mkdir -p -- "$root/downloads" "$root/tools" "$root/logs"
+
+if [[ ! -d "$root/tools/tart.app" ]]; then
+  archive="$root/downloads/tart-2.41.1.tar.gz"
+  curl -fL --retry 2 -o "$archive" https://github.com/openai/tart/releases/download/2.41.1/tart.tar.gz
+  printf '%s  %s\n' e680a734febccfce7d4e910c1f7f13fc3b00f19a181c945e2d746de3214c32c2 "$archive" | shasum -a 256 -c -
+  tar -xzf "$archive" -C "$root/tools" tart.app
+fi
+codesign --verify --deep --strict "$root/tools/tart.app"
+
+if [[ ! -f "$root/tools/softnet-0.25.0/softnet" ]]; then
+  archive="$root/downloads/softnet-0.25.0.tar.gz"
+  curl -fL --retry 2 -o "$archive" https://github.com/openai/softnet/releases/download/0.25.0/softnet.tar.gz
+  printf '%s  %s\n' 5a2e8ef779f0a2169b88d273ee806c0d64321ec7714c0dc99bf217523ae9b008 "$archive" | shasum -a 256 -c -
+  mkdir -p -- "$root/tools/softnet-0.25.0"
+  tar -xzf "$archive" -C "$root/tools/softnet-0.25.0" softnet
+fi
+if [[ ! -x /Library/PrivilegedHelperTools/puluo-search/softnet ]]; then
+  "$root/install-softnet"
+fi

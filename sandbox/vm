@@ -1,0 +1,27 @@
+#!/bin/bash
+set -euo pipefail
+umask 077
+
+root=$(cd -- "$(dirname -- "$0")" && pwd)
+export TART_HOME="$root/tart"
+cli="$root/tools/tart.app/Contents/MacOS/tart"
+source "$root/instance-env"
+
+case "${1:-}" in
+  list) exec "$cli" list ;;
+  observe) exec /usr/bin/tail -n 30 -F "$logs/serial.log" ;;
+  ip) exec "$cli" ip "$name" ;;
+  stop) exec "$cli" stop "$name" ;;
+  offline|provision|isolated)
+    mode=$1
+    shift
+    if [[ $# == 0 && "$mode" == provision && -f "$state/seed.iso" && "$name" != puluo-ubuntu ]]; then
+      set -- "$state/seed.iso"
+    fi
+    mkdir -p -- "$logs"
+    export PULUO_VM_STATE="$state"
+    export PATH="/Library/PrivilegedHelperTools/puluo-search:$PATH"
+    exec /usr/bin/python3 "$root/launch.py" "$cli" "$name" "$logs/serial.log" "$mode" "$@"
+    ;;
+  *) printf 'Usage: %s {list|observe|ip|stop|offline [seed.iso]|provision [seed.iso]|isolated}\n' "$0" >&2; exit 2 ;;
+esac

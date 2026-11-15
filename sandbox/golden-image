@@ -1,0 +1,95 @@
+#!/bin/bash
+set -euo pipefail
+umask 077
+
+lab=$(cd -- "$(dirname -- "$0")" && pwd)
+build="$lab/image-build"
+seed="$build/seed"
+tart="$lab/tools/tart.app/Contents/MacOS/tart"
+export TART_HOME="$lab/tart"
+export PATH="/Library/PrivilegedHelperTools/puluo-search:$PATH"
+export PULUO_VM_STATE="$lab/state"
+name=puluo-golden
+
+case "${1:-}" in
+  fetch-base)
+    mkdir -p "$build"
+    command -v qemu-img >/dev/null || { printf 'qemu-img is required for QCOW2 conversion.\n' >&2; exit 1; }
+    qcow="$build/ubuntu-24.04-server-cloudimg-arm64.img"
+    curl -fL --retry 2 -o "$qcow" \
+      https://cloud-images.ubuntu.com/releases/noble/release-20261017/ubuntu-24.04-server-cloudimg-arm64.img
+    printf '%s  %s\n' 50e24e1fb79e89116e939d90aa7738f7af48c442fa1bc2510131e0b39c50348e "$qcow" | shasum -a 256 -c -
+    qemu-img convert -f qcow2 -O raw "$qcow" "$build/ubuntu-base.raw"
+    ;;
+  prepare)
+    mkdir -p "$seed" "$lab/logs" "$lab/state"
+    raw=${2:?Provide a raw Canonical Ubuntu ARM64 disk}
+    software=${3:-}
+    if [[ -n "$software" ]]; then
+      if [[ ! "$software" -ef "$seed/software.tgz" ]]; then
+        cp -- "$software" "$seed/software.tgz"
+      fi
+      (cd "$seed" && shasum -a 256 software.tgz > software.sha256)
+    fi
+    if [[ ! -s "$lab/state/provision-hosts" ]]; then
+      pending=$(mktemp "$lab/state/provision-hosts.XXXXXX")
+      trap 'rm -f "$pending"' EXIT
+      for endpoint in ports.ubuntu.com nodejs.org registry.npmjs.org cdn.playwright.dev playwright.download.prss.microsoft.com storage.googleapis.com; do
+        /usr/bin/dscacheutil -q host -a name "$endpoint" |
+          awk -v endpoint="$endpoint" '/^ip_address: / {print $2, endpoint; found=1} END {if (!found) exit 1}' >> "$pending"
+      done
+      mv -- "$pending" "$lab/state/provision-hosts"
+    fi
+    awk '{print $1}' "$lab/state/provision-hosts" | sort -u > "$lab/state/provision-ipv4.txt"
+    cp -- "$lab/state/provision-hosts" "$seed/provision-hosts"
+    for file in build-image-guest.sh install-guest.sh guest-run.py puluo-wake.service puluo-wake.timer; do
+      cp -- "$lab/$file" "$seed/$file"
+    done
+    cp -- "$lab/guest.cordis.yml" "$seed/cordis.yml"
+    if [[ -d "$lab/npm-locks" ]]; then
+      cp -R -- "$lab/npm-locks" "$seed/"
+    fi
+    cat > "$seed/meta-data" <<'EOF'
+instance-id: puluo-golden-build
+local-hostname: puluo-golden-build
+EOF
+    cat > "$seed/user-data" <<'EOF'
+#cloud-config
+disable_root: true
+ssh_pwauth: false
+ssh_deletekeys: true
+ssh_genkeytypes: []
+users:
+  - name: experiment
+    shell: /bin/bash
+    lock_passwd: true
+
+runcmd:
+  - |
+    exec >>/dev/hvc0 2>&1
+    set -eu
+    trap 'printf "\nPULUO_GOLDEN_IMAGE_FAILED\n"' EXIT
+    mkdir -p /mnt/puluo-seed
+    mount -o ro -L cidata /mnt/puluo-seed
+    ls -1 /mnt/puluo-seed
+    /bin/bash /mnt/puluo-seed/build-image-guest.sh /mnt/puluo-seed
+    trap - EXIT
+EOF
+    /usr/bin/hdiutil makehybrid -quiet -iso -joliet -default-volume-name cidata \
+      -o "$build/builder.iso" "$seed"
+    "$tart" create --linux "$name"
+    "$tart" set "$name" --cpu 2 --memory 4096 --disk "$raw" --disk-size 16
+    ;;
+  run)
+    exec /usr/bin/python3 "$lab/launch.py" "$tart" "$name" "$lab/logs/golden-build.log" build "$build/builder.iso"
+    ;;
+  export)
+    if ! rg -q '^PULUO_GOLDEN_IMAGE_READY\r?$' "$lab/logs/golden-build.log"; then
+      printf 'Golden image verification has not passed.\n' >&2
+      exit 1
+    fi
+    "$tart" export "$name" "$build/puluo-golden-arm64.tvm"
+    (cd "$build" && shasum -a 256 puluo-golden-arm64.tvm > SHA256SUMS)
+    ;;
+  *) printf 'Usage: %s {fetch-base|prepare UBUNTU_RAW [SOFTWARE_TAR]|run|export}\n' "$0" >&2; exit 2 ;;
+esac

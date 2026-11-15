@@ -1,0 +1,18 @@
+#!/bin/bash
+# One-time macOS administrator setup for the isolated network backend.
+set -euo pipefail
+
+root=$(cd -- "$(dirname -- "$0")" && pwd)
+source_binary="$root/tools/softnet-0.25.0/softnet"
+helper_dir=/Library/PrivilegedHelperTools/puluo-search
+expected=5c838134bb91af720d3575a9918e0bebe48a40bf37deaf0a5ec2219ba94b8534
+printf '%s  %s\n' "$expected" "$source_binary" | /usr/bin/shasum -a 256 -c -
+
+if [[ -L "$helper_dir" || -e "$helper_dir/softnet" ]]; then
+  printf 'Destination already exists. Verify it before replacing it.\n' >&2
+  exit 1
+fi
+
+/usr/bin/sudo /usr/bin/install -d -o root -g wheel -m 0755 "$helper_dir"
+/usr/bin/sudo /usr/bin/install -o root -g wheel -m 4755 "$source_binary" "$helper_dir/softnet"
+/usr/bin/stat -f '%Sp %Su:%Sg %N' "$helper_dir/softnet"

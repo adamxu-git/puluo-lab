@@ -1,0 +1,9 @@
+.DS_Store
+/sandbox/downloads/
+/sandbox/tools/
+/sandbox/tart/
+/sandbox/logs/
+/sandbox/state/
+/sandbox/instances/
+/sandbox/image-build/
+__pycache__/

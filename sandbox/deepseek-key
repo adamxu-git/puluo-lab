@@ -1,0 +1,13 @@
+#!/bin/bash
+set -euo pipefail
+
+root=$(cd -- "$(dirname -- "$0")" && pwd)
+printf 'DeepSeek API Key: ' >&2
+IFS= read -r -s key </dev/tty
+printf '\n' >&2
+if [[ ! "$key" =~ ^sk-[[:alnum:]_-]+$ ]]; then
+  printf 'Expected a DeepSeek API key beginning with sk-.\n' >&2
+  exit 1
+fi
+printf '%s\n' "$key" | "$root/guest-admin" 'sudo sh -c '\''set -e; umask 077; install -d -m 755 /etc/puluo; temp=$(mktemp /etc/puluo/.key.XXXXXX); trap "rm -f -- \"$temp\"" EXIT; cat > "$temp"; mv -f -- "$temp" /etc/puluo/deepseek-key'\'''
+printf 'API key stored inside the VM.\n'

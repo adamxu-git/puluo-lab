@@ -1,0 +1,62 @@
+#!/bin/bash
+set -euo pipefail
+umask 077
+
+root=$(cd -- "$(dirname -- "$0")" && pwd)
+export PULUO_VM_NAME=${1:?Provide a new instance name}
+image=${2:-"$root/image-build/puluo-golden-arm64.tvm"}
+source "$root/instance-env"
+if [[ "$name" == puluo-ubuntu || -e "$state" || ! -f "$image" ]]; then
+  printf 'Choose an unused instance name and an existing .tvm image.\n' >&2
+  exit 2
+fi
+
+export TART_HOME="$root/tart"
+tart="$root/tools/tart.app/Contents/MacOS/tart"
+if [[ -e "$TART_HOME/vms/$name" ]]; then
+  printf 'A Tart VM with this name already exists.\n' >&2
+  exit 1
+fi
+mkdir -p -- "$state/seed" "$logs"
+/usr/bin/dscacheutil -q host -a name api.deepseek.com |
+  /usr/bin/awk '/^ip_address: / {print $2}' |
+  /usr/bin/python3 -c 'import sys,ipaddress
+addresses = sorted({ipaddress.IPv4Address(line.strip()) for line in sys.stdin})
+if not addresses or any(not ip.is_global or ip.is_multicast for ip in addresses):
+    sys.exit("No validated public DeepSeek IPv4 address")
+for address in addresses:
+    print(address)' > "$state/isolated-ipv4.txt"
+cp -- "$state/isolated-ipv4.txt" "$state/provision-ipv4.txt"
+ssh-keygen -q -t ed25519 -N '' -C "puluo-$name" -f "$state/setup-key"
+printf 'instance-id: %s\nlocal-hostname: %s\n' "$(/usr/bin/uuidgen)" "$name" > "$state/seed/meta-data"
+{
+  cat <<'EOF'
+#cloud-config
+disable_root: true
+ssh_pwauth: false
+users:
+  - name: setup
+    shell: /bin/bash
+    lock_passwd: true
+    sudo: ['ALL=(ALL) NOPASSWD:ALL']
+    ssh_authorized_keys:
+EOF
+  printf '      - %s\n' "$(cat "$state/setup-key.pub")"
+  cat <<'EOF'
+  - name: experiment
+    shell: /bin/bash
+    lock_passwd: true
+bootcmd:
+  - |
+    if ! grep -q ' # puluo-api$' /etc/hosts; then
+EOF
+  while IFS= read -r address; do
+    printf "      printf '%%s\\\\n' '%s api.deepseek.com # puluo-api' >> /etc/hosts\n" "$address"
+  done < "$state/isolated-ipv4.txt"
+  printf '    fi\n'
+} > "$state/seed/user-data"
+/usr/bin/hdiutil makehybrid -quiet -iso -joliet -default-volume-name cidata \
+  -o "$state/seed.iso" "$state/seed"
+"$tart" import "$image" "$name"
+"$tart" set "$name" --random-mac
+printf 'Created %s. Start provisioning with PULUO_VM_NAME=%s %s/vm provision\n' "$name" "$name" "$root"
