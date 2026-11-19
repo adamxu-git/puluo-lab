@@ -1,63 +1,55 @@
 # Puluo Lab
 
-[简体中文](README.zh-CN.md)
+**A local lab for scheduled AI experiments on Apple Silicon.**
 
-Puluo Lab runs a scheduled AI experiment in an Ubuntu ARM64 VM on an Apple Silicon Mac. The Golden Image includes DeepSeek Harness (DSH) 0.2.2-rc.1, Playwright Chromium, the systemd timer, and serial audit collection. Each new instance gets its own management SSH key, machine identity, and DSH session. The image starts with an empty workspace and session history. Supply the DeepSeek API key when configuring an instance.
+[简体中文](README.zh-CN.md) · [Setup and operations](docs/guide.md) · [Contributing](CONTRIBUTING.md)
 
-## Start an instance
+Puluo Lab runs DeepSeek Harness in an Ubuntu ARM64 virtual machine. The agent resumes its own session on a nightly schedule, works in a dedicated workspace, and sends run events to the Mac over a virtual serial port. The local dashboard lets you review those runs from the host.
 
-If you already have a local `puluo-golden-arm64.tvm` and `SHA256SUMS`, run `shasum -a 256 -c SHA256SUMS` in their directory. You can also build the image locally using the steps below.
+![Puluo Lab dashboard showing run history, the nightly schedule, and audit status](docs/dashboard.png)
 
-Run these commands from the repository root on an Apple Silicon Mac with the macOS command-line tools. The first Softnet installation requires administrator access and changes the DHCP lease time for the macOS virtual network.
+*Dashboard preview with sample data.*
 
-```sh
-./sandbox/bootstrap-mac
-./sandbox/new-instance lab-01 /absolute/path/to/puluo-golden-arm64.tvm
-export PULUO_VM_NAME=lab-01
-./sandbox/vm provision
+## What it does
+
+- **Repeatable setup.** Build a Golden Image with pinned dependencies. Each instance gets its own machine identity, management SSH key, and DSH session.
+- **Scheduled runs.** systemd starts a new turn in the existing session at 23:00 and hourly from 00:00 through 04:00 Beijing time, with a 30-minute limit per turn.
+- **Controlled guest networking.** Tart and Softnet apply different rules for provisioning, isolated operation, and offline runs. Public Chromium access is opt-in.
+- **Host-side observation.** Follow the serial log or open the loopback dashboard to review run history, tool events, and token usage.
+
+## Get started
+
+You’ll need an Apple Silicon Mac with macOS 26 or later, the macOS Command Line Tools, administrator access for Softnet setup, and a DeepSeek API key. If you’re building the image locally, install `qemu-img` as well.
+
+| Starting point | Where to go |
+| --- | --- |
+| Build an image from source | [Build the Golden Image](docs/guide.md#build-the-golden-image) |
+| Import an existing Golden Image | [Create and provision an instance](docs/guide.md#create-and-provision-an-instance) |
+| Operate or troubleshoot an instance | [Observe and manage runs](docs/guide.md#observe-and-manage-runs) |
+
+## How it fits together
+
+```mermaid
+flowchart LR
+    subgraph Guest["Ubuntu ARM64 guest"]
+        Timer["systemd timer"] --> DSH["DeepSeek Harness"]
+        DSH --> Workspace["Workspace and session"]
+        DSH --> Browser["Playwright Chromium"]
+    end
+    subgraph Host["Apple Silicon Mac"]
+        Tart["Tart and Softnet"]
+        Serial["Serial log"] --> Dashboard["Local dashboard"]
+    end
+    Tart --> Guest
+    DSH -->|Run events| Serial
+    DSH -->|Model requests| API["DeepSeek API"]
 ```
 
-In another terminal, configure the instance from the repository root. Edit the example prompts to suit your experiment. The API key entry is hidden.
+| Path | Purpose |
+| --- | --- |
+| [`sandbox/`](sandbox/) | VM lifecycle, image build, and guest runtime |
+| [`sandbox/dashboard/`](sandbox/dashboard/) | Local dashboard and serial audit parser |
+| [`sandbox/browser-network/`](sandbox/browser-network/) | Optional Chromium proxy and guest egress policy |
+| [`sandbox/npm-locks/`](sandbox/npm-locks/) | Locked DeepSeek Harness and browser tool dependencies |
 
-```sh
-export PULUO_VM_NAME=lab-01
-./sandbox/guest-admin 'cloud-init status --wait'
-./sandbox/deepseek-key
-./sandbox/background/install
-./sandbox/guest-admin 'sudo install -m 644 /dev/stdin /etc/systemd/system/puluo-wake.service' < sandbox/puluo-wake.service
-./sandbox/guest-admin 'sudo systemctl daemon-reload'
-./sandbox/guest-admin 'sudo install -m 644 /dev/stdin /etc/puluo/system-prompt.yml' < sandbox/system-prompt.example.yml
-./sandbox/guest-admin 'sudo install -m 644 /dev/stdin /etc/puluo/wake.txt' < sandbox/wake.example.txt
-./sandbox/guest-admin 'sudo systemctl enable puluo-wake.timer'
-./sandbox/guest-admin 'sudo systemctl poweroff'
-```
-
-Wait for `vm provision` to exit after Ubuntu shuts down. Then start the instance in isolated mode.
-
-```sh
-./sandbox/vm isolated
-```
-
-The enabled timer starts when Ubuntu boots. It wakes the experiment at 23:00 Beijing time and again at 00:00, 01:00, 02:00, 03:00, and 04:00. systemd terminates each run at 30 minutes. The timer skips slots missed while the VM is off. Starting the VM automatically when macOS boots requires a separate host configuration.
-
-DSH loads the system prompt on each wake and submits the wake prompt as a fresh user message in the existing session. Both example files use the same sentence. DSH automatically compacts its history.
-
-Run `PULUO_VM_NAME=lab-01 ./sandbox/vm observe` to watch the host's serial log. The collector rotates the log at 32 MiB and retains one previous file. Isolated mode blocks inbound SSH. Chromium can access pages inside the VM. To enable public browsing, run `./sandbox/browser-network/install` in the management session before powering off. Chromium then uses a guest proxy for public IPv4 HTTP and HTTPS. Ordinary guest processes can connect directly to the configured DeepSeek API. Recheck the network boundary after changing the host, API endpoint, or network policy.
-
-For a local dashboard, run `PULUO_VM_NAME=lab-01 ./sandbox/vm dashboard` and open [localhost:8765](http://127.0.0.1:8765). It reads the instance's serial audit log and shows the VM status and recorded runs. After changing the timer in management mode, run `./sandbox/dashboard/record-timer` with the same instance name to refresh the displayed timer status.
-
-The image uses Tart's ARM64 format. For an x86_64 server, reuse the initialization, scheduling, and audit configuration when building an image for that architecture.
-
-## Build the Golden Image
-
-Put `qemu-img` on your PATH to convert Canonical's QCOW2 image to a raw disk. The builder boots a separate VM with read-only installation media and downloads the dependencies from allowlisted sources. The VM shuts down after the build checks pass.
-
-```sh
-./sandbox/bootstrap-mac
-./sandbox/golden-image fetch-base
-./sandbox/golden-image prepare sandbox/image-build/ubuntu-base.raw
-./sandbox/golden-image run
-./sandbox/golden-image export
-```
-
-The image and checksum appear in `sandbox/image-build/`. The build log is at `sandbox/logs/golden-build.log`.
+[Report a bug or suggest a feature](https://github.com/adamxu-git/puluo-lab-homeforai/issues/new/choose) · [Security reporting](SECURITY.md)

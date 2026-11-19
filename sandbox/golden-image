@@ -84,7 +84,7 @@ EOF
     exec /usr/bin/python3 "$lab/launch.py" "$tart" "$name" "$lab/logs/golden-build.log" build "$build/builder.iso"
     ;;
   export)
-    if ! rg -q '^PULUO_GOLDEN_IMAGE_READY\r?$' "$lab/logs/golden-build.log"; then
+    if ! LC_ALL=C /usr/bin/grep -Eq $'^PULUO_GOLDEN_IMAGE_READY\r?$' "$lab/logs/golden-build.log"; then
       printf 'Golden image verification has not passed.\n' >&2
       exit 1
     fi

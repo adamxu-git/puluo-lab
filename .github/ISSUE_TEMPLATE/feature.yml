@@ -1,0 +1,17 @@
+name: Feature request / 功能建议
+description: Suggest an improvement to Puluo Lab / 提出改进建议
+body:
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use case / 使用场景
+      description: Describe what you are trying to do and where you get stuck.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior / 期望行为
+      description: Describe the change and how you would tell that it works.
+    validations:
+      required: true

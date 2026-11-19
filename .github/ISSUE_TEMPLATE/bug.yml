@@ -1,0 +1,26 @@
+name: Bug report / 报告问题
+description: Report unexpected behavior in Puluo Lab / 反馈实际运行问题
+title: "[Bug] "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened? / 发生了什么？
+      description: Describe the expected result and what you observed.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce / 复现步骤
+      description: Include the commands you ran and any relevant redacted error excerpts.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment / 运行环境
+      description: Include the repository revision, macOS version, and VM mode if applicable.
+      placeholder: "Revision, macOS version, VM mode (provision, isolated, or offline)"
+    validations:
+      required: true

@@ -1,61 +1,55 @@
 # Puluo Lab
 
-[English](README.md)
+**在 Apple Silicon Mac 上定时运行 AI 实验。**
 
-本项目提供一个在 Apple Silicon Mac 上运行的 Ubuntu ARM64 自主 AI 实验环境。Golden Image 包含 DeepSeek Harness 0.2.2-rc.1、Playwright Chromium、定时器和串口审计代码。每台新实例独立生成 SSH 管理密钥、机器身份和会话。发布镜像里没有 API Key、聊天历史或项目工作文件。
+[English](README.md) · [部署与运行指南](docs/guide.zh-CN.md) · [贡献指南](CONTRIBUTING.md#简体中文)
 
-## 从 Golden Image 创建实例
+Puluo Lab 在 Ubuntu ARM64 虚拟机里运行 DeepSeek Harness。Agent 在独立工作区内定时续接会话，并通过虚拟串口把运行事件写到 Mac。你可以在宿主机的本地看板上回看每一轮实验。
 
-已有本地 `puluo-golden-arm64.tvm` 和 `SHA256SUMS` 时，在镜像目录运行 `shasum -a 256 -c SHA256SUMS`。公开仓库提供构建脚本和依赖锁文件，构建时从 Canonical 和各软件项目的官方源下载。
+![Puluo Lab 本地看板，显示运行历史、夜间调度和审计状态](docs/dashboard.png)
 
-在仓库根目录运行以下命令。需要 Apple Silicon Mac、macOS 命令行工具和本机管理员账户。首次安装 Softnet 会请求管理员授权，组件会调整 macOS 虚拟网络的 DHCP 租期。
+*看板预览使用示例数据。*
 
-```sh
-./sandbox/bootstrap-mac
-./sandbox/new-instance lab-01 /absolute/path/to/puluo-golden-arm64.tvm
-export PULUO_VM_NAME=lab-01
-./sandbox/vm provision
+## 主要功能
+
+- **可重复部署。** 使用锁定的依赖构建 Golden Image。每个实例拥有独立的机器身份、管理 SSH 密钥和 DSH 会话。
+- **定时续接会话。** systemd 在北京时间 23:00 和次日 00:00 至 04:00 的整点唤醒 Agent，每轮限时 30 分钟。
+- **按模式管理网络。** Tart 和 Softnet 为管理、隔离和离线模式应用不同的网络规则。按需启用 Chromium 公网访问。
+- **从宿主机查看实验。** 跟踪串口日志，或打开本地看板查看运行历史、工具调用和 Token 用量。
+
+## 快速开始
+
+准备一台运行 macOS 26 或更新版本的 Apple Silicon Mac，安装 macOS 命令行工具，并准备一个 DeepSeek API Key。首次配置 Softnet 需要管理员权限。本机构建镜像还需要 `qemu-img`。
+
+| 你的起点 | 下一步 |
+| --- | --- |
+| 从源码构建镜像 | [构建 Golden Image](docs/guide.zh-CN.md#构建-golden-image) |
+| 导入已有 Golden Image | [创建并配置实例](docs/guide.zh-CN.md#创建并配置实例) |
+| 运行或排查现有实例 | [查看和管理运行](docs/guide.zh-CN.md#查看和管理运行) |
+
+## 运行架构
+
+```mermaid
+flowchart LR
+    subgraph Guest["Ubuntu ARM64 虚拟机"]
+        Timer["systemd 定时器"] --> DSH["DeepSeek Harness"]
+        DSH --> Workspace["工作区与会话"]
+        DSH --> Browser["Playwright Chromium"]
+    end
+    subgraph Host["Apple Silicon Mac"]
+        Tart["Tart 和 Softnet"]
+        Serial["串口日志"] --> Dashboard["本地看板"]
+    end
+    Tart --> Guest
+    DSH -->|运行事件| Serial
+    DSH -->|模型请求| API["DeepSeek API"]
 ```
 
-在另一个终端从仓库根目录运行以下命令。输入的 Key 不回显。
+| 路径 | 用途 |
+| --- | --- |
+| [`sandbox/`](sandbox/) | 虚拟机管理、镜像构建和来宾系统运行配置 |
+| [`sandbox/dashboard/`](sandbox/dashboard/) | 本地看板和串口审计解析 |
+| [`sandbox/browser-network/`](sandbox/browser-network/) | 可选的 Chromium 代理和出站规则 |
+| [`sandbox/npm-locks/`](sandbox/npm-locks/) | DeepSeek Harness 和浏览器工具的依赖锁文件 |
 
-```sh
-export PULUO_VM_NAME=lab-01
-./sandbox/guest-admin 'cloud-init status --wait'
-./sandbox/deepseek-key
-./sandbox/background/install
-./sandbox/guest-admin 'sudo install -m 644 /dev/stdin /etc/systemd/system/puluo-wake.service' < sandbox/puluo-wake.service
-./sandbox/guest-admin 'sudo systemctl daemon-reload'
-./sandbox/guest-admin 'sudo install -m 644 /dev/stdin /etc/puluo/system-prompt.yml' < sandbox/system-prompt.example.yml
-./sandbox/guest-admin 'sudo install -m 644 /dev/stdin /etc/puluo/wake.txt' < sandbox/wake.example.txt
-./sandbox/guest-admin 'sudo systemctl enable puluo-wake.timer'
-./sandbox/guest-admin 'sudo systemctl poweroff'
-```
-
-等第一个终端里的 `vm provision` 退出，确认 VM 已关机，再启动隔离模式。
-
-```sh
-./sandbox/vm isolated
-```
-
-每次唤醒都会加载系统提示词，并在同一个 DSH 会话里新发一条唤醒消息。两个示例文件使用同一句话。DSH 负责自动压缩历史。定时器按北京时间在 23:00 及次日 00:00、01:00、02:00、03:00、04:00 各触发一次。每轮到了 30 分钟由 systemd 终止，关机漏掉的时间点不补跑。启用定时器后，它会在 Ubuntu 启动时加载。macOS 开机启动 VM 需要另外配置。
-
-运行 `PULUO_VM_NAME=lab-01 ./sandbox/vm observe` 查看 Mac 上的串口审计日志。采集到 32 MiB 时轮转，保留上一份文件。实验模式关闭管理 SSH。浏览器可访问 VM 内部网页。若要开放公网浏览，在管理模式下关机前运行 `./sandbox/browser-network/install`。Chromium 会通过 VM 内的代理访问公网 IPv4 的 HTTP 和 HTTPS 页面，普通进程直连公网仍限于 DeepSeek API。更换主机、模型端点或网络策略后，应重新验证隔离。
-
-运行 `PULUO_VM_NAME=lab-01 ./sandbox/vm dashboard`，在浏览器打开本地看板。它从 Mac 读取该实例的串口日志，显示 VM 状态和已记录的运行。管理模式下修改定时器之后，用同一个实例名运行 `./sandbox/dashboard/record-timer` 刷新定时器状态。[打开本地看板](http://127.0.0.1:8765)
-
-本镜像使用 Tart 的 ARM64 虚拟机格式。换用 x86_64 服务器时，可复用云镜像初始化、DSH 调度和审计设计，并为新架构重新构建。
-
-## 在本机重新生成 Golden Image
-
-需要 `qemu-img` 在 PATH 上，用于把 Canonical 的 QCOW2 转成 Tart 支持的磁盘。构建过程使用独立的空白虚拟机、初始无账号凭据的只读安装介质，以及 Softnet 允许的安装源。构建验证成功后，虚拟机会自动关机。
-
-```sh
-./sandbox/bootstrap-mac
-./sandbox/golden-image fetch-base
-./sandbox/golden-image prepare sandbox/image-build/ubuntu-base.raw
-./sandbox/golden-image run
-./sandbox/golden-image export
-```
-
-输出在 `sandbox/image-build/puluo-golden-arm64.tvm`，同目录生成校验文件。构建日志在 `sandbox/logs/golden-build.log`。
+[报告问题或建议功能](https://github.com/adamxu-git/puluo-lab-homeforai/issues/new/choose) · [安全问题报告](SECURITY.md#简体中文)
